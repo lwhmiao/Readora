@@ -78,6 +78,13 @@ export default function Reader() {
   const [epubLocation, setEpubLocation] = useState<string | number>(0);
   const epubViewRef = useRef<any>(null);
 
+  const [isInitialLoad, setIsInitialLoad] = useState(true);
+
+  useEffect(() => {
+    const timer = setTimeout(() => setIsInitialLoad(false), 300);
+    return () => clearTimeout(timer);
+  }, []);
+
   useEffect(() => {
     const saved = localStorage.getItem('libraryBooks');
     let foundBook: BookType | undefined;
@@ -684,7 +691,7 @@ export default function Reader() {
           >
             <div 
               ref={txtContentRef}
-              className="h-full book-content font-serif transition-transform duration-300 ease-in-out"
+              className={`h-full book-content font-serif ${isInitialLoad ? '' : 'transition-transform duration-300 ease-in-out'}`}
               style={{
                 columnWidth: `${containerWidth - 48}px`, // 48px is total horizontal padding (px-6 = 24px * 2)
                 columnGap: '48px',
@@ -693,7 +700,7 @@ export default function Reader() {
               }}
             >
               {txtContent.split(/\r?\n+/).filter(p => p.trim()).map((paragraph, index) => (
-                <p key={index} className="mb-6 whitespace-pre-wrap break-inside-avoid">
+                <p key={index} className="mb-6 whitespace-pre-wrap text-justify">
                   {paragraph}
                 </p>
               ))}
