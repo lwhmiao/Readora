@@ -5,6 +5,7 @@ import { Book as BookType } from '../types';
 import { get } from 'idb-keyval';
 import * as pdfjsLib from 'pdfjs-dist';
 import { EpubView } from 'react-reader';
+import { mockBooks } from './Library';
 
 // Set up PDF.js worker
 pdfjsLib.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.mjs`;
@@ -79,22 +80,39 @@ export default function Reader() {
 
   useEffect(() => {
     const saved = localStorage.getItem('libraryBooks');
+    let foundBook: BookType | undefined;
+    let books: BookType[] = [];
+    
     if (saved) {
       try {
-        const books: BookType[] = JSON.parse(saved);
-        const foundBook = books.find(b => b.id === id);
-        if (foundBook) {
-          setBook(foundBook);
-          if (foundBook.currentPage) {
-            if (foundBook.format === 'EPUB') {
-              setEpubLocation(foundBook.currentPage as any);
-            } else {
-              setPageNum(foundBook.currentPage as number);
-            }
-          }
-        }
+        books = JSON.parse(saved);
+        foundBook = books.find(b => b.id === id);
       } catch (e) {
         console.error('Failed to parse saved books', e);
+      }
+    }
+    
+    if (!foundBook) {
+      foundBook = mockBooks.find(b => b.id === id);
+    }
+    
+    if (foundBook && foundBook.id === '1' && foundBook.format === 'EPUB') {
+      foundBook = mockBooks[0];
+      // Also update localStorage so Library page reflects the change
+      if (books.length > 0) {
+        const updatedBooks = books.map(b => b.id === '1' ? mockBooks[0] : b);
+        localStorage.setItem('libraryBooks', JSON.stringify(updatedBooks));
+      }
+    }
+    
+    if (foundBook) {
+      setBook(foundBook);
+      if (foundBook.currentPage) {
+        if (foundBook.format === 'EPUB') {
+          setEpubLocation(foundBook.currentPage as any);
+        } else {
+          setPageNum(foundBook.currentPage as number);
+        }
       }
     }
   }, [id]);

@@ -613,7 +613,7 @@ export default function Profile() {
       </section>
       
       <nav className="fixed bottom-0 left-0 right-0 max-w-md mx-auto bg-white border-t border-gray-100 flex justify-around items-center py-2 z-50">
-        <button onClick={() => navigate('/')} className="flex flex-col items-center text-gray-400"><Home size={24} /><span className="text-[11px] mt-1">Feed</span></button>
+        <button onClick={() => navigate('/')} className="flex flex-col items-center text-gray-400"><Home size={24} /><span className="text-[11px] mt-1">Discovery</span></button>
         <button onClick={() => navigate('/library')} className="flex flex-col items-center text-gray-400"><Book size={24} /><span className="text-[11px] mt-1">Library</span></button>
         <button className="flex flex-col items-center text-black"><User size={24} /><span className="text-[11px] mt-1 font-bold">Profile</span></button>
       </nav>
