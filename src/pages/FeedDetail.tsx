@@ -228,12 +228,13 @@ export default function FeedDetail() {
 现有的评论：
 ${comments.slice(0, 5).map(c => `${c.userName}: ${c.content}`).join('\n')}
 
-请根据笔记内容和现有评论，生成 5 到 10 条新的评论。这些评论应该像真实用户的讨论，可以是对笔记的感悟、赞同、质疑，或者是对现有评论的回复。
-请只返回一个 JSON 数组，数组中的每个对象包含两个字段：
-- userName: 随机生成一个中文昵称
-- content: 评论的具体内容
-
-不要返回任何其他格式或说明文字，只返回 JSON 数组。
+请根据笔记内容，生成 5 到 10 条新的评论。
+要求：
+1. 评论内容必须直接引用或紧密围绕笔记原文进行讨论。
+2. 请只返回一个 JSON 数组，数组中的每个对象包含两个字段：
+   - userName: 随机生成一个中文昵称
+   - content: 评论的具体内容
+3. 不要返回任何其他格式或说明文字，只返回 JSON 数组。
 `;
 
       const res = await fetch(`${config.baseUrl.replace(/\/+$/, '')}/chat/completions`, {
@@ -253,24 +254,32 @@ ${comments.slice(0, 5).map(c => `${c.userName}: ${c.content}`).join('\n')}
       const data = await res.json();
       const content = data.choices[0].message.content;
       
-      // Try to extract JSON if it's wrapped in markdown or mixed with text
+      // 改进解析机制：尝试寻找第一个 '[' 和最后一个 ']' 之间的内容
       let cleanedContent = content;
-      const jsonMatch = content.match(/\[[\s\S]*\]/);
-      if (jsonMatch) {
-        cleanedContent = jsonMatch[0];
+      const firstBracket = content.indexOf('[');
+      const lastBracket = content.lastIndexOf(']');
+      
+      if (firstBracket !== -1 && lastBracket !== -1 && lastBracket > firstBracket) {
+        cleanedContent = content.substring(firstBracket, lastBracket + 1);
+      } else {
+        // 如果找不到方括号，尝试寻找第一个 '{' 和最后一个 '}'
+        const firstBrace = content.indexOf('{');
+        const lastBrace = content.lastIndexOf('}');
+        if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+          cleanedContent = content.substring(firstBrace, lastBrace + 1);
+          // 如果是单个对象，包装成数组
+          cleanedContent = `[${cleanedContent}]`;
+        }
       }
+      
       cleanedContent = cleanedContent.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
       
       let parsed;
       try {
-        // Check if the content is likely JSON
-        if (!cleanedContent.startsWith('{') && !cleanedContent.startsWith('[')) {
-          throw new Error("AI returned a non-JSON response");
-        }
         parsed = JSON.parse(cleanedContent);
       } catch (e) {
         console.error('Failed to parse JSON', content);
-        throw new Error('大模型返回格式错误');
+        throw new Error('大模型返回格式错误，无法解析为 JSON 数组');
       }
 
       const newCommentsList = Array.isArray(parsed) ? parsed : (parsed.comments || []);
