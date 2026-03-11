@@ -243,7 +243,7 @@ export default function DiscoveryFeed() {
       
       // 准备用于生成笔记的提示词
       let prompt = `
-请生成 8 条中文笔记，要求如下：
+请生成 5-8 条中文笔记，要求如下：
 1. 笔记内容必须直接引用书籍原文，不要包含“XXX作者写道”、“XXX说道”等描述。
 2. 必须引用真实存在的书籍。
 3. **极其重要：只返回 JSON 数据，不要包含任何其他文字、解释或对话。**
@@ -305,23 +305,29 @@ export default function DiscoveryFeed() {
         throw new Error("API 配置错误：您配置的 API 似乎指向了一个支持机器人，而不是大模型 API。请前往 Profile 页面检查 API 地址和模型配置。");
       }
 
-      // Try to extract JSON if it's wrapped in markdown or mixed with text
+      // 改进解析机制：提取 JSON 并清理常见错误
       let cleanedContent = replyContent;
-      const jsonMatch = replyContent.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        cleanedContent = jsonMatch[0];
+      const firstBrace = replyContent.indexOf('{');
+      const lastBrace = replyContent.lastIndexOf('}');
+      
+      if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+        cleanedContent = replyContent.substring(firstBrace, lastBrace + 1);
       }
+      
+      // 移除 Markdown 标记和多余空白
       cleanedContent = cleanedContent.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
+      
+      // 移除 JSON 中常见的末尾逗号
+      cleanedContent = cleanedContent.replace(/,\s*([\]}])/g, '$1');
 
       try {
-        // Fix common JSON issues: unescaped quotes inside strings
-        const fixedContent = cleanedContent.replace(/("content":\s*".*?)"(.*?)"/g, '$1\\"$2\\"');
-        const parsed = JSON.parse(fixedContent);
-        const aiGenerated = parsed.notes || parsed || [];
-        generatedNotes = [...generatedNotes, ...aiGenerated];
+        const parsed = JSON.parse(cleanedContent);
+        const aiGenerated = parsed.notes || (Array.isArray(parsed) ? parsed : [parsed]);
+        const aiGeneratedArray = Array.isArray(aiGenerated) ? aiGenerated : [aiGenerated];
+        generatedNotes = [...generatedNotes, ...aiGeneratedArray];
       } catch (e) {
-        console.error("Failed to parse JSON:", e, "Raw content:", replyContent);
-        throw new Error("返回的数据格式不正确，请确保 AI 返回的是纯 JSON。如果问题持续，请检查 API 配置是否正确。");
+        console.error("Failed to parse JSON:", e, "Cleaned content:", cleanedContent);
+        throw new Error("返回的数据格式不正确，解析失败。请确保 AI 返回的是标准 JSON 格式。");
       }
       
       const fonts = ['font-serif', 'font-sans', 'font-mono', 'font-handwritten', 'font-brush'];
