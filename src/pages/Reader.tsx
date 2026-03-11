@@ -138,8 +138,14 @@ export default function Reader() {
     if (!id) return;
     try {
       const file = await get(`book_file_${id}`);
-      if (file) {
-        const arrayBuffer = await file.arrayBuffer();
+      if (file && file instanceof Blob) {
+        // Use FileReader for better compatibility with older mobile browsers
+        const reader = new FileReader();
+        const arrayBuffer = await new Promise<ArrayBuffer>((resolve, reject) => {
+          reader.onload = () => resolve(reader.result as ArrayBuffer);
+          reader.onerror = reject;
+          reader.readAsArrayBuffer(file);
+        });
         setEpubData(arrayBuffer);
       }
     } catch (err) {
@@ -154,8 +160,14 @@ export default function Reader() {
       
       try {
         const file = await get(`book_file_${id}`);
-        if (file) {
-          content = await file.text();
+        if (file && file instanceof Blob) {
+          // Use FileReader for better compatibility with older mobile browsers
+          const reader = new FileReader();
+          content = await new Promise<string>((resolve, reject) => {
+            reader.onload = () => resolve(reader.result as string);
+            reader.onerror = reject;
+            reader.readAsText(file);
+          });
         }
       } catch (err) {
         console.error('Error loading TXT from IDB:', err);
@@ -242,8 +254,15 @@ export default function Reader() {
     if (!id) return;
     try {
       const file = await get(`book_file_${id}`);
-      if (file) {
-        const arrayBuffer = await file.arrayBuffer();
+      if (file && file instanceof Blob) {
+        // Use FileReader for better compatibility with older mobile browsers
+        const reader = new FileReader();
+        const arrayBuffer = await new Promise<ArrayBuffer>((resolve, reject) => {
+          reader.onload = () => resolve(reader.result as ArrayBuffer);
+          reader.onerror = reject;
+          reader.readAsArrayBuffer(file);
+        });
+        
         const loadingTask = pdfjsLib.getDocument({ data: new Uint8Array(arrayBuffer) });
         const pdf = await loadingTask.promise;
         setPdfDoc(pdf);

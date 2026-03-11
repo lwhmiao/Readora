@@ -184,8 +184,10 @@ export default function Library() {
       const newBookId = Date.now().toString();
       
       try {
-        // Save the actual file to IndexedDB
-        await set(`book_file_${newBookId}`, file);
+        // Convert File to Blob for better compatibility with mobile IndexedDB
+        // Storing the raw File object can sometimes fail on mobile browsers
+        const blob = new Blob([file], { type: file.type });
+        await set(`book_file_${newBookId}`, blob);
         
         const newBook: BookType = {
           id: newBookId,
@@ -198,16 +200,9 @@ export default function Library() {
           totalPages: 1
         };
         
-        if (extension === 'TXT') {
-          const reader = new FileReader();
-          reader.onload = (event) => {
-            newBook.content = event.target?.result as string;
-            setBooks(prev => [newBook, ...prev]);
-          };
-          reader.readAsText(file);
-        } else {
-          setBooks(prev => [newBook, ...prev]);
-        }
+        // We don't store the full content in the book object to avoid localStorage limits
+        // The content will be loaded from IndexedDB in the Reader page
+        setBooks(prev => [newBook, ...prev]);
       } catch (err) {
         console.error('Failed to save file to IDB', err);
         alert('Failed to save file. It might be too large or your browser does not support it.');
@@ -314,7 +309,7 @@ export default function Library() {
                 key={book.id} 
                 className="flex flex-col gap-1.5 group cursor-pointer relative"
                 onClick={() => {
-                  if (editingBookId !== book.id) {
+                  if (editingBookId !== book.id && editingAuthorId !== book.id) {
                     navigate(`/reader/${book.id}`);
                   }
                 }}
@@ -389,7 +384,20 @@ export default function Library() {
                 </div>
                 
                 <div>
-                  <h3 className="font-bold text-[12px] text-gray-900 leading-tight line-clamp-1">{book.title}</h3>
+                  {editingBookId === book.id ? (
+                    <form onSubmit={(e) => handleRenameSubmit(e, book.id)} onClick={(e) => e.stopPropagation()}>
+                      <input 
+                        type="text" 
+                        value={editTitle}
+                        onChange={(e) => setEditTitle(e.target.value)}
+                        onBlur={(e) => handleRenameSubmit(e, book.id)}
+                        autoFocus
+                        className="w-full font-bold text-[12px] text-gray-900 leading-tight border-b border-gray-300 focus:outline-none focus:border-black bg-transparent"
+                      />
+                    </form>
+                  ) : (
+                    <h3 className="font-bold text-[12px] text-gray-900 leading-tight line-clamp-1 cursor-pointer" onClick={(e) => { e.stopPropagation(); startRename(e, book); }}>{book.title}</h3>
+                  )}
                   {editingAuthorId === book.id ? (
                     <form onSubmit={(e) => handleRenameAuthorSubmit(e, book.id)} onClick={(e) => e.stopPropagation()}>
                       <input 
