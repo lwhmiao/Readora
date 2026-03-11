@@ -231,6 +231,8 @@ export default function FeedDetail() {
    - userName: 随机生成的中文昵称
    - content: 评论的具体内容
 3. 严禁返回任何 JSON 以外的文字、说明或 Markdown 标记。
+4. **重要**：如果评论内容中包含引号，请务必使用中文引号（“”）或转义引号（\"），确保生成的 JSON 字符串合法。
+5. **严禁**在评论内容中使用原始的、未转义的双引号。
 `;
 
       const res = await fetch(`${config.baseUrl.replace(/\/+$/, '')}/chat/completions`, {
@@ -263,12 +265,10 @@ export default function FeedDetail() {
       if (firstBracket !== -1 && lastBracket !== -1 && lastBracket > firstBracket) {
         cleanedContent = cleanedContent.substring(firstBracket, lastBracket + 1);
       } else {
-        // 如果找不到方括号，尝试寻找第一个 '{' 和最后一个 '}'
         const firstBrace = cleanedContent.indexOf('{');
         const lastBrace = cleanedContent.lastIndexOf('}');
         if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
           cleanedContent = cleanedContent.substring(firstBrace, lastBrace + 1);
-          // 如果是单个对象，包装成数组
           if (!cleanedContent.trim().startsWith('[')) {
             cleanedContent = `[${cleanedContent}]`;
           }
@@ -277,13 +277,28 @@ export default function FeedDetail() {
       
       // 3. 移除 JSON 中常见的末尾逗号
       cleanedContent = cleanedContent.replace(/,\s*([\]}])/g, '$1');
-      
+
+      // 4. 尝试修复未转义的内部双引号（针对 "key": "value" 模式）
+      // 这是一个启发式修复：利用预读确保匹配到真正的字段结尾
+      cleanedContent = cleanedContent.replace(/\n/g, ' ');
+
       let parsed;
       try {
         parsed = JSON.parse(cleanedContent);
       } catch (e) {
-        console.error('Failed to parse JSON:', e, 'Cleaned content:', cleanedContent);
-        throw new Error('大模型返回格式错误，无法解析为 JSON 数组');
+        // 如果解析失败，尝试“暴力”修复：将内部的双引号替换为中文引号
+        try {
+          // 匹配 "userName":"..." 或 "content":"..."，利用预读确保匹配到字段结束标记（," 或 }）
+          const repairedContent = cleanedContent.replace(/"(userName|content)":\s*"(.*?)"\s*(?=,\s*"|\s*})/g, (match, key, value) => {
+            // 将值内部未转义的双引号替换为中文引号
+            const escapedValue = value.replace(/(?<!\\)"/g, '“');
+            return `"${key}": "${escapedValue}"`;
+          });
+          parsed = JSON.parse(repairedContent);
+        } catch (e2) {
+          console.error('Failed to parse JSON after repair:', e2, 'Cleaned content:', cleanedContent);
+          throw new Error('大模型返回格式错误，无法解析为 JSON 数组。错误原因：内容中包含未转义的引号且自动修复失败。');
+        }
       }
 
       const newCommentsList = Array.isArray(parsed) ? parsed : (parsed.comments || []);
