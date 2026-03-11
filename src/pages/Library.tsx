@@ -74,7 +74,9 @@ export default function Library() {
 
   const [contextMenu, setContextMenu] = useState<{ bookId: string, x: number, y: number } | null>(null);
   const [editingBookId, setEditingBookId] = useState<string | null>(null);
+  const [editingAuthorId, setEditingAuthorId] = useState<string | null>(null);
   const [editTitle, setEditTitle] = useState('');
+  const [editAuthor, setEditAuthor] = useState('');
   const longPressTimer = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
@@ -123,6 +125,13 @@ export default function Library() {
     setContextMenu(null);
   };
 
+  const startRenameAuthor = (e: React.MouseEvent, book: BookType) => {
+    e.stopPropagation();
+    setEditingAuthorId(book.id);
+    setEditAuthor(book.author);
+    setContextMenu(null);
+  };
+
   const handleRenameSubmit = (e: React.FormEvent, bookId: string) => {
     e.preventDefault();
     e.stopPropagation();
@@ -130,6 +139,15 @@ export default function Library() {
       setBooks(books.map(b => b.id === bookId ? { ...b, title: editTitle.trim() } : b));
     }
     setEditingBookId(null);
+  };
+
+  const handleRenameAuthorSubmit = (e: React.FormEvent, bookId: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (editAuthor.trim()) {
+      setBooks(books.map(b => b.id === bookId ? { ...b, author: editAuthor.trim() } : b));
+    }
+    setEditingAuthorId(null);
   };
 
   const handleDelete = async (e: React.MouseEvent, bookId: string) => {
@@ -147,11 +165,21 @@ export default function Library() {
     localStorage.setItem('libraryBooks', JSON.stringify(books));
   }, [books]);
 
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+      const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
       const extension = file.name.split('.').pop()?.toUpperCase() || 'UNKNOWN';
-      const title = file.name.replace(/\.[^/.]+$/, "");
+      
+      // Parse title and author
+      let title = file.name.replace(/\.[^/.]+$/, "");
+      let author = 'Unknown Author';
+      
+      const parts = title.split('-');
+      if (parts.length >= 2) {
+        title = parts[0].trim();
+        author = parts[1].trim().split(' ')[0]; // Take only the name part before space
+      }
+      
       const randomStyle = generateCoverConfig();
       const newBookId = Date.now().toString();
       
@@ -162,7 +190,7 @@ export default function Library() {
         const newBook: BookType = {
           id: newBookId,
           title: title,
-          author: 'Unknown Author',
+          author: author,
           coverUrl: '',
           coverStyle: randomStyle,
           format: extension as 'EPUB' | 'PDF' | 'TXT',
@@ -230,14 +258,14 @@ export default function Library() {
         />
       </header>
       <div className="px-4 pt-2 pb-4">
-        <div className="flex items-center gap-2 mb-4">
+        <div className="flex items-center gap-2 mb-3">
           <div className="relative flex-1">
             <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
-              <Search size={18} className="text-gray-400" />
+              <Search size={16} className="text-gray-400" />
             </div>
             <input 
-              className="block w-full p-3 pl-10 text-sm border border-gray-100 rounded-xl bg-[#f9f9f9] focus:ring-0 focus:border-gray-200 transition-all placeholder-gray-400" 
-              placeholder="Search your books..." 
+              className="block w-full p-1.5 pl-8 text-xs border border-gray-100 rounded-lg bg-[#f9f9f9] focus:ring-0 focus:border-gray-200 transition-all placeholder-gray-400" 
+              placeholder="Search..." 
               type="text"
               value={searchInput}
               onChange={(e) => setSearchInput(e.target.value)}
@@ -246,18 +274,18 @@ export default function Library() {
           </div>
           <button 
             onClick={handleSearch}
-            className="px-4 py-3 bg-[#333333] text-white text-sm font-medium rounded-xl whitespace-nowrap"
+            className="px-2 py-1.5 bg-[#333333] text-white text-xs font-medium rounded-lg whitespace-nowrap"
           >
             搜索
           </button>
         </div>
         
-        <div className="flex items-center gap-2 overflow-x-auto no-scrollbar pb-2">
+        <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-2">
           {categories.map(category => (
             <button 
               key={category}
               onClick={() => setActiveCategory(category)}
-              className={`px-4 py-1.5 text-sm border rounded-lg whitespace-nowrap transition-colors ${
+              className={`px-3 py-1 text-xs border rounded-lg whitespace-nowrap transition-colors ${
                 activeCategory === category 
                   ? 'bg-[#333333] text-white border-[#333333]' 
                   : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'
@@ -269,10 +297,10 @@ export default function Library() {
         </div>
       </div>
       
-      <div className="h-px bg-gray-100 w-full mb-6"></div>
+      <div className="h-px bg-gray-100 w-full mb-3"></div>
 
       <main className="flex-1 px-4 pb-24 relative">
-        <div className="grid grid-cols-2 gap-x-4 gap-y-8">
+        <div className="grid grid-cols-3 gap-x-3 gap-y-4">
           {filteredBooks.map(book => {
             let config;
             try {
@@ -284,7 +312,7 @@ export default function Library() {
             return (
               <div 
                 key={book.id} 
-                className="flex flex-col gap-3 group cursor-pointer relative"
+                className="flex flex-col gap-1.5 group cursor-pointer relative"
                 onClick={() => {
                   if (editingBookId !== book.id) {
                     navigate(`/reader/${book.id}`);
@@ -295,7 +323,7 @@ export default function Library() {
                 onTouchEnd={handleTouchEnd}
                 onTouchMove={handleTouchMove}
               >
-                <div className="relative w-full aspect-[3/4] rounded-xl overflow-hidden shadow-sm border border-gray-100" style={{ backgroundColor: config.bg || '#EAE6D9' }}>
+                <div className="relative w-full aspect-[3/4] rounded-lg overflow-hidden shadow-sm border border-gray-100" style={{ backgroundColor: config.bg || '#EAE6D9' }}>
                   {book.coverUrl ? (
                     <img src={book.coverUrl} alt={book.title} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                   ) : (
@@ -338,9 +366,9 @@ export default function Library() {
                       })}
                       
                       {/* Book Title & Author */}
-                      <div className="absolute inset-0 flex flex-col items-center justify-center p-4 text-center z-10">
-                        <h3 className="font-serif font-bold text-lg leading-tight line-clamp-3 mb-2" style={{ color: config.textColor }}>{book.title}</h3>
-                        <p className="text-xs uppercase tracking-widest" style={{ color: config.textColor, opacity: 0.7 }}>{book.author}</p>
+                      <div className="absolute inset-0 flex flex-col items-center justify-center p-2 text-center z-10">
+                        <h3 className="font-serif font-bold text-[10px] leading-tight line-clamp-3 mb-1" style={{ color: config.textColor }}>{book.title}</h3>
+                        <p className="text-[8px] uppercase tracking-widest" style={{ color: config.textColor, opacity: 0.7 }}>{book.author}</p>
                       </div>
                     </>
                   )}
@@ -349,33 +377,33 @@ export default function Library() {
                   {!book.coverUrl && (
                     <button 
                       onClick={(e) => handleRefreshCover(e, book.id)}
-                      className="absolute top-2 right-2 p-1.5 bg-white/50 hover:bg-white/80 backdrop-blur-sm rounded-full text-gray-800 z-20 opacity-0 group-hover:opacity-100 transition-opacity"
+                      className="absolute top-1 right-1 p-1 bg-white/50 hover:bg-white/80 backdrop-blur-sm rounded-full text-gray-800 z-20 opacity-0 group-hover:opacity-100 transition-opacity"
                     >
-                      <RefreshCw size={14} />
+                      <RefreshCw size={10} />
                     </button>
                   )}
                   
-                  <div className="absolute bottom-2 right-2 bg-black/70 backdrop-blur-sm text-white text-[10px] font-bold px-2 py-1 rounded uppercase tracking-wider z-20">
+                  <div className="absolute bottom-1 right-1 bg-black/70 backdrop-blur-sm text-white text-[8px] font-bold px-1 py-0.5 rounded uppercase tracking-wider z-20">
                     {book.format}
                   </div>
                 </div>
                 
                 <div>
-                  {editingBookId === book.id ? (
-                    <form onSubmit={(e) => handleRenameSubmit(e, book.id)} onClick={(e) => e.stopPropagation()}>
+                  <h3 className="font-bold text-[12px] text-gray-900 leading-tight line-clamp-1">{book.title}</h3>
+                  {editingAuthorId === book.id ? (
+                    <form onSubmit={(e) => handleRenameAuthorSubmit(e, book.id)} onClick={(e) => e.stopPropagation()}>
                       <input 
                         type="text" 
-                        value={editTitle}
-                        onChange={(e) => setEditTitle(e.target.value)}
-                        onBlur={(e) => handleRenameSubmit(e, book.id)}
+                        value={editAuthor}
+                        onChange={(e) => setEditAuthor(e.target.value)}
+                        onBlur={(e) => handleRenameAuthorSubmit(e, book.id)}
                         autoFocus
-                        className="w-full font-bold text-[15px] text-gray-900 leading-tight border-b border-gray-300 focus:outline-none focus:border-black bg-transparent"
+                        className="w-full text-[10px] text-gray-500 mt-0.5 border-b border-gray-300 focus:outline-none focus:border-black bg-transparent"
                       />
                     </form>
                   ) : (
-                    <h3 className="font-bold text-[15px] text-gray-900 leading-tight line-clamp-1">{book.title}</h3>
+                    <p className="text-[10px] text-gray-500 mt-0.5 line-clamp-1 cursor-pointer" onClick={(e) => { e.stopPropagation(); startRenameAuthor(e, book); }}>{book.author}</p>
                   )}
-                  <p className="text-[13px] text-gray-500 mt-1">{book.author}</p>
                 </div>
               </div>
             );
@@ -402,6 +430,15 @@ export default function Library() {
               <Edit2 size={14} /> 重命名
             </button>
             <button 
+              onClick={(e) => {
+                const book = books.find(b => b.id === contextMenu.bookId);
+                if (book) startRenameAuthor(e, book);
+              }}
+              className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2"
+            >
+              <Edit2 size={14} /> 重命名作者
+            </button>
+            <button 
               onClick={(e) => handleDelete(e, contextMenu.bookId)}
               className="w-full px-4 py-2 text-left text-sm text-red-600 hover:bg-red-50 flex items-center gap-2"
             >
@@ -417,10 +454,10 @@ export default function Library() {
         )}
       </main>
       
-      <nav className="fixed bottom-0 left-0 right-0 max-w-md mx-auto bg-white border-t border-gray-100 flex justify-around items-center py-2 z-50">
-        <button onClick={() => navigate('/')} className="flex flex-col items-center text-gray-400"><Home size={24} /><span className="text-[11px] mt-1">Discovery</span></button>
-        <button className="flex flex-col items-center text-black"><Book size={24} /><span className="text-[11px] mt-1 font-bold">Library</span></button>
-        <button onClick={() => navigate('/profile')} className="flex flex-col items-center text-gray-400"><User size={24} /><span className="text-[11px] mt-1">Profile</span></button>
+      <nav className="fixed bottom-0 left-0 right-0 max-w-md mx-auto bg-white border-t border-gray-100 flex justify-around items-center py-1 z-50">
+        <button onClick={() => navigate('/')} className="flex flex-col items-center text-gray-400"><Home size={20} /><span className="text-[10px] mt-0.5">Discovery</span></button>
+        <button className="flex flex-col items-center text-black"><Book size={20} /><span className="text-[10px] mt-0.5 font-bold">Library</span></button>
+        <button onClick={() => navigate('/profile')} className="flex flex-col items-center text-gray-400"><User size={20} /><span className="text-[10px] mt-0.5">Profile</span></button>
       </nav>
     </div>
   );

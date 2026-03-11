@@ -243,16 +243,19 @@ export default function DiscoveryFeed() {
       const bookTitles = libraryBooks.map((b: any) => b.title).join(', ');
       
       const prompt = `
-你是一个创意写作助手，专门负责生成社交媒体评论。请根据以下内容生成 5 到 8 条不同风格的中文评论。
+你是一个创意写作助手。请根据以下内容生成 5 到 8 条不同风格的中文笔记。
 内容：小时候能看见大人看不见的东西，长大后却只剩下看报表和看手机了……
 
 要求：
-1. 评论必须是中文。
-2. 风格多样，可以有感性的、理性的、幽默的、反思的等。
+1. 笔记必须是中文。
+2. 必须引用真实、出版过的书籍，不得捏造不存在的书籍。
 3. **极其重要：只返回 JSON 数据，不要包含任何其他文字、解释或对话。**
 4. 返回的 JSON 格式必须是一个对象，包含一个 \`notes\` 数组，每个元素包含以下字段：
-   - userName: 用户名
-   - content: 评论内容
+   - content: 笔记内容
+   - bookTitle: 真实的书名
+   - author: 书籍作者
+   - chapter: 章节名
+   - type: 类型 (notebook, marriage, quote, insight, question)
 `;
 
       const res = await fetch(`${config.baseUrl.replace(/\/+$/, '')}/chat/completions`, {
@@ -522,10 +525,10 @@ export default function DiscoveryFeed() {
         </div>
       )}
 
-      <nav className="fixed bottom-0 left-0 right-0 max-w-md mx-auto bg-white/95 backdrop-blur-sm border-t border-gray-100 flex justify-around items-center py-2 z-50 shadow-[0_-1px_10px_rgba(0,0,0,0.02)]">
-        <button className="flex flex-col items-center text-black"><Home size={24} /><span className="text-[11px] mt-1 font-bold">Discovery</span></button>
-        <button onClick={() => navigate('/library')} className="flex flex-col items-center text-gray-400"><Book size={24} /><span className="text-[11px] mt-1">Library</span></button>
-        <button onClick={() => navigate('/profile')} className="flex flex-col items-center text-gray-400"><User size={24} /><span className="text-[11px] mt-1">Profile</span></button>
+      <nav className="fixed bottom-0 left-0 right-0 max-w-md mx-auto bg-white/95 backdrop-blur-sm border-t border-gray-100 flex justify-around items-center py-1 z-50 shadow-[0_-1px_10px_rgba(0,0,0,0.02)]">
+        <button className="flex flex-col items-center text-black"><Home size={20} /><span className="text-[10px] mt-0.5 font-bold">Discovery</span></button>
+        <button onClick={() => navigate('/library')} className="flex flex-col items-center text-gray-400"><Book size={20} /><span className="text-[10px] mt-0.5">Library</span></button>
+        <button onClick={() => navigate('/profile')} className="flex flex-col items-center text-gray-400"><User size={20} /><span className="text-[10px] mt-0.5">Profile</span></button>
       </nav>
     </div>
   );

@@ -253,10 +253,17 @@ ${comments.slice(0, 5).map(c => `${c.userName}: ${c.content}`).join('\n')}
       const data = await res.json();
       const content = data.choices[0].message.content;
       
+      // Try to extract JSON if it's wrapped in markdown or mixed with text
+      let cleanedContent = content;
+      const jsonMatch = content.match(/\[[\s\S]*\]/);
+      if (jsonMatch) {
+        cleanedContent = jsonMatch[0];
+      }
+      cleanedContent = cleanedContent.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
+      
       let parsed;
       try {
-        const match = content.match(/\[[\s\S]*\]/);
-        parsed = match ? JSON.parse(match[0]) : JSON.parse(content);
+        parsed = JSON.parse(cleanedContent);
       } catch (e) {
         console.error('Failed to parse JSON', content);
         throw new Error('大模型返回格式错误');
