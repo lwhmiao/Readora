@@ -257,22 +257,21 @@ export default function Reader() {
     try {
       const file = await get(`book_file_${id}`);
       if (file && file instanceof Blob) {
-        const reader = new FileReader();
-        const arrayBuffer = await new Promise<ArrayBuffer>((resolve, reject) => {
-          reader.onload = () => resolve(reader.result as ArrayBuffer);
-          reader.onerror = reject;
-          reader.readAsArrayBuffer(file);
-        });
+        // Use Blob URL instead of ArrayBuffer for better memory management on mobile
+        const blobUrl = URL.createObjectURL(file);
         
-        // Add cMapUrl and standardFontDataUrl for better character support in PDFs
+        // Ensure worker is set
+        pdfjsLib.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.mjs`;
+
         const loadingTask = pdfjsLib.getDocument({ 
-          data: new Uint8Array(arrayBuffer),
+          url: blobUrl,
           cMapUrl: `https://unpkg.com/pdfjs-dist@${pdfjsLib.version}/cmaps/`,
           cMapPacked: true,
           standardFontDataUrl: `https://unpkg.com/pdfjs-dist@${pdfjsLib.version}/standard_fonts/`,
           disableRange: true,
           disableStream: true,
         });
+        
         const pdf = await loadingTask.promise;
         setPdfDoc(pdf);
         setTotalPages(pdf.numPages);
@@ -338,32 +337,36 @@ export default function Reader() {
     if (!pdfDoc || !canvasRef.current) return;
     
     if (renderTaskRef.current) {
-      renderTaskRef.current.cancel();
+      try {
+        renderTaskRef.current.cancel();
+      } catch (e) {}
     }
 
     try {
       const page = await pdfDoc.getPage(num);
       const canvas = canvasRef.current;
-      const ctx = canvas.getContext('2d');
+      const ctx = canvas.getContext('2d', { alpha: false });
       if (!ctx) return;
 
-      const containerWidth = canvas.parentElement?.clientWidth || window.innerWidth;
-      const unscaledViewport = page.getViewport({ scale: 1 });
+      // More reliable width detection for mobile
+      const container = canvas.closest('main');
+      const availableWidth = container?.clientWidth || window.innerWidth;
+      const targetWidth = Math.min(availableWidth - 48, 400); // 48 is padding, cap at 400 for max-w-md
       
-      // Calculate scale to fit width, with a safe fallback
-      let scale = (containerWidth > 48 ? containerWidth - 48 : window.innerWidth - 48) / unscaledViewport.width;
-      if (scale <= 0 || isNaN(scale)) scale = 1;
+      const unscaledViewport = page.getViewport({ scale: 1 });
+      const scale = targetWidth / unscaledViewport.width;
 
-      // Use a balanced resolution for mobile to avoid memory crashes while staying sharp
-      const outputScale = Math.min(2, window.devicePixelRatio || 1);
+      // Balanced resolution for mobile (DPR capped at 1.5 to save memory)
+      const outputScale = Math.min(window.devicePixelRatio || 1, 1.5);
       const viewport = page.getViewport({ scale: scale * outputScale }); 
 
-      canvas.height = viewport.height;
       canvas.width = viewport.width;
-      canvas.style.width = '100%';
+      canvas.height = viewport.height;
+      canvas.style.width = `${targetWidth}px`;
       canvas.style.height = 'auto';
 
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.fillStyle = 'white';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
 
       const renderContext = {
         canvasContext: ctx,
