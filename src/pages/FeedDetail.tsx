@@ -263,6 +263,10 @@ ${comments.slice(0, 5).map(c => `${c.userName}: ${c.content}`).join('\n')}
       
       let parsed;
       try {
+        // Check if the content is likely JSON
+        if (!cleanedContent.startsWith('{') && !cleanedContent.startsWith('[')) {
+          throw new Error("AI returned a non-JSON response");
+        }
         parsed = JSON.parse(cleanedContent);
       } catch (e) {
         console.error('Failed to parse JSON', content);

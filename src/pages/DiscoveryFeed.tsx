@@ -243,17 +243,17 @@ export default function DiscoveryFeed() {
       const bookTitles = libraryBooks.map((b: any) => b.title).join(', ');
       
       const prompt = `
-你是一个创意写作助手。请根据以下内容生成 5 到 8 条不同风格的中文笔记。
+请根据以下内容，生成 5 到 8 条不同风格的中文笔记。
 内容：小时候能看见大人看不见的东西，长大后却只剩下看报表和看手机了……
 
 要求：
 1. 笔记必须是中文。
-2. 必须引用真实、出版过的书籍，不得捏造不存在的书籍。
+2. 引用真实的书籍信息。
 3. **极其重要：只返回 JSON 数据，不要包含任何其他文字、解释或对话。**
 4. 返回的 JSON 格式必须是一个对象，包含一个 \`notes\` 数组，每个元素包含以下字段：
    - content: 笔记内容
-   - bookTitle: 真实的书名
-   - author: 书籍作者
+   - bookTitle: 书名
+   - author: 作者
    - chapter: 章节名
    - type: 类型 (notebook, marriage, quote, insight, question)
 `;
@@ -284,6 +284,11 @@ export default function DiscoveryFeed() {
       const data = await res.json();
       const replyContent = data.choices[0].message.content;
       
+      // Check if the response is a refusal or support message
+      if (replyContent.includes('I\'m a support assistant') || replyContent.includes('AI code editor')) {
+        throw new Error("API 配置错误：您配置的 API 似乎指向了一个支持机器人，而不是大模型 API。请前往 Profile 页面检查 API 地址和模型配置。");
+      }
+
       // Try to extract JSON if it's wrapped in markdown or mixed with text
       let cleanedContent = replyContent;
       const jsonMatch = replyContent.match(/\{[\s\S]*\}/);
@@ -300,7 +305,7 @@ export default function DiscoveryFeed() {
         generatedNotes = parsed.notes || parsed || [];
       } catch (e) {
         console.error("Failed to parse JSON:", e, "Raw content:", replyContent);
-        throw new Error("返回的数据格式不正确，请确保 AI 返回的是纯 JSON");
+        throw new Error("返回的数据格式不正确，请确保 AI 返回的是纯 JSON。如果问题持续，请检查 API 配置是否正确。");
       }
       
       const fonts = ['font-serif', 'font-sans', 'font-mono', 'font-handwritten', 'font-brush'];
