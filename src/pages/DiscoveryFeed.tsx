@@ -243,20 +243,16 @@ export default function DiscoveryFeed() {
       const bookTitles = libraryBooks.map((b: any) => b.title).join(', ');
       
       const prompt = `
-你是一个读书笔记生成助手。请生成 5 到 8 条读书笔记。
+你是一个创意写作助手，专门负责生成社交媒体评论。请根据以下内容生成 5 到 8 条不同风格的中文评论。
+内容：小时候能看见大人看不见的东西，长大后却只剩下看报表和看手机了……
+
 要求：
-1. 笔记总数为 5 到 8 条之间的随机数。
-2. 其中一半的笔记必须来源于以下用户的书架：[${bookTitles || '暂无书籍'}]。请从这些书中随机选择几本，提取其中的某个章节的某个段落作为笔记内容。如果书架为空，则全部从你的知识库中抽取。
-3. 另一半的笔记请从你自己的知识库中随机抽取。你可以根据用户的书架推断用户的阅读喜好，从而选择合适类型的书籍。
-4. **极其重要：所有提及的书籍必须是现实中真实存在、正式出版过的书籍，绝对不可以凭空捏造书名或作者！**
-5. 每次发布的笔记，其来源书籍不能有重合（即这 5-8 条笔记必须来自不同的书）。
-6. 每条笔记的字数控制在 10 到 100 字之间。
-7. 返回的 JSON 格式必须是一个对象，包含一个 \`notes\` 数组，每个元素包含以下字段：
-   - content: 笔记内容（可以使用简单的 HTML 标签如 <span class="text-orange-500 font-bold">, <br/> 增加排版。注意：笔记重点字的颜色（如 text-orange-500, text-blue-500, text-red-500, text-emerald-500, text-purple-500 等）必须随机，但要与背景适配，不能跟背景色类似，不然就看不清了）
-   - bookTitle: 书名
-   - author: 作者
-   - chapter: 章节名（如“第一章”、“序言”等）
-   - type: 笔记类型（从 'notebook', 'quote', 'insight', 'question' 中选择一个）
+1. 评论必须是中文。
+2. 风格多样，可以有感性的、理性的、幽默的、反思的等。
+3. **极其重要：只返回 JSON 数据，不要包含任何其他文字、解释或对话。**
+4. 返回的 JSON 格式必须是一个对象，包含一个 \`notes\` 数组，每个元素包含以下字段：
+   - userName: 用户名
+   - content: 评论内容
 `;
 
       const res = await fetch(`${config.baseUrl.replace(/\/+$/, '')}/chat/completions`, {
@@ -269,7 +265,7 @@ export default function DiscoveryFeed() {
           model: config.model,
           messages: [{ role: 'user', content: prompt }],
           temperature: 0.7,
-          response_format: { type: "json_object" }
+          // Remove response_format: { type: "json_object" } if it causes issues with some models
         })
       });
 
@@ -285,13 +281,23 @@ export default function DiscoveryFeed() {
       const data = await res.json();
       const replyContent = data.choices[0].message.content;
       
+      // Try to extract JSON if it's wrapped in markdown or mixed with text
+      let cleanedContent = replyContent;
+      const jsonMatch = replyContent.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        cleanedContent = jsonMatch[0];
+      }
+      cleanedContent = cleanedContent.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
+
       let generatedNotes = [];
       try {
-        const parsed = JSON.parse(replyContent);
+        // Fix common JSON issues: unescaped quotes inside strings
+        const fixedContent = cleanedContent.replace(/("content":\s*".*?)"(.*?)"/g, '$1\\"$2\\"');
+        const parsed = JSON.parse(fixedContent);
         generatedNotes = parsed.notes || parsed || [];
       } catch (e) {
-        console.error("Failed to parse JSON:", e);
-        throw new Error("返回的数据格式不正确");
+        console.error("Failed to parse JSON:", e, "Raw content:", replyContent);
+        throw new Error("返回的数据格式不正确，请确保 AI 返回的是纯 JSON");
       }
       
       const fonts = ['font-serif', 'font-sans', 'font-mono', 'font-handwritten', 'font-brush'];
