@@ -8,7 +8,7 @@ import { EpubView } from 'react-reader';
 import { mockBooks } from './Library';
 
 // Set up PDF.js worker
-pdfjsLib.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.mjs`;
+pdfjsLib.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.mjs`;
 
 const THEMES = [
   { id: 'light', bg: '#ffffff', text: '#37352F', name: '默认白' },
@@ -264,11 +264,14 @@ export default function Reader() {
           reader.readAsArrayBuffer(file);
         });
         
-        // Add cMapUrl for better CJK character support in PDFs
+        // Add cMapUrl and standardFontDataUrl for better character support in PDFs
         const loadingTask = pdfjsLib.getDocument({ 
           data: new Uint8Array(arrayBuffer),
           cMapUrl: `https://unpkg.com/pdfjs-dist@${pdfjsLib.version}/cmaps/`,
           cMapPacked: true,
+          standardFontDataUrl: `https://unpkg.com/pdfjs-dist@${pdfjsLib.version}/standard_fonts/`,
+          disableRange: true,
+          disableStream: true,
         });
         const pdf = await loadingTask.promise;
         setPdfDoc(pdf);
@@ -346,18 +349,26 @@ export default function Reader() {
 
       const containerWidth = canvas.parentElement?.clientWidth || window.innerWidth;
       const unscaledViewport = page.getViewport({ scale: 1 });
-      // Limit scale to avoid memory issues on mobile
-      const scale = Math.min(2, (containerWidth - 48) / unscaledViewport.width); 
-      const viewport = page.getViewport({ scale: scale * (window.devicePixelRatio || 1) }); 
+      
+      // Calculate scale to fit width, with a safe fallback
+      let scale = (containerWidth > 48 ? containerWidth - 48 : window.innerWidth - 48) / unscaledViewport.width;
+      if (scale <= 0 || isNaN(scale)) scale = 1;
+
+      // Use a balanced resolution for mobile to avoid memory crashes while staying sharp
+      const outputScale = Math.min(2, window.devicePixelRatio || 1);
+      const viewport = page.getViewport({ scale: scale * outputScale }); 
 
       canvas.height = viewport.height;
       canvas.width = viewport.width;
       canvas.style.width = '100%';
       canvas.style.height = 'auto';
 
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
       const renderContext = {
         canvasContext: ctx,
-        viewport: viewport
+        viewport: viewport,
+        intent: 'display'
       };
 
       renderTaskRef.current = page.render(renderContext);
