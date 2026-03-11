@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { RefreshCw, Book, User, Home, HelpCircle, Settings, Heart, Plus, X } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { Card } from '../types';
+import { get } from 'idb-keyval';
 
 export const mockCards: Card[] = [
   {
@@ -241,13 +242,45 @@ export default function DiscoveryFeed() {
 
       const libraryBooks = JSON.parse(localStorage.getItem('libraryBooks') || '[]');
       
+      // 1. 从 library 中随机抽取书名和可能的片段
+      const libraryContexts = [];
+      if (libraryBooks.length > 0) {
+        const shuffled = [...libraryBooks].sort(() => 0.5 - Math.random());
+        const selected = shuffled.slice(0, 4);
+        
+        for (const book of selected) {
+          let snippet = '';
+          if (book.format === 'TXT') {
+            try {
+              const file = await get(`book_file_${book.id}`);
+              const text = file ? await file.text() : (book.content || '');
+              if (text) {
+                // 随机抽取一段较长的上下文供 AI 挑选精华
+                const start = Math.floor(Math.random() * Math.max(1, text.length - 800));
+                snippet = text.substring(start, start + 800);
+              }
+            } catch (e) {}
+          }
+          libraryContexts.push({ title: book.title, author: book.author, snippet });
+        }
+      }
+
+      const libraryInfo = libraryContexts.map(b => 
+        `书名：《${b.title}》 作者：${b.author}${b.snippet ? `\n参考片段：${b.snippet}` : ''}`
+      ).join('\n\n');
+      
       // 准备用于生成笔记的提示词
       let prompt = `
-请生成 5-8 条中文笔记，要求如下：
-1. 笔记内容必须直接引用书籍原文，不要包含“XXX作者写道”、“XXX说道”等描述。
-2. 必须引用真实存在的书籍。
-3. **极其重要：只返回 JSON 数据，不要包含任何其他文字、解释或对话。**
-4. 返回的 JSON 格式必须是一个对象，包含一个 \`notes\` 数组，每个元素包含以下字段：
+请生成 8 条中文笔记，要求如下：
+1. 其中 4 条笔记必须来自以下我正在阅读的书籍。如果提供了“参考片段”，请从中挑选或润色一段 30-120 字的原文；如果没有提供片段，请根据你的知识库召回该书真实的经典段落：
+${libraryInfo || '（暂无本地书籍，请自行推荐 8 条）'}
+
+2. 另外 4 条笔记请推荐其他真实存在的书籍并提取其中的精彩原文。
+3. **字数限制：每条笔记的内容必须在 30 到 120 字之间。**
+4. 笔记内容必须直接引用书籍原文，不要包含“XXX作者写道”、“XXX说道”等描述。
+5. 必须引用真实存在的书籍，不得捏造。
+6. **极其重要：只返回 JSON 数据，不要包含任何其他文字、解释或对话。**
+7. 返回的 JSON 格式必须是一个对象，包含一个 \`notes\` 数组，每个元素包含以下字段：
    - content: 笔记内容
    - bookTitle: 书名
    - author: 作者
@@ -255,26 +288,6 @@ export default function DiscoveryFeed() {
    - type: 类型 (notebook, marriage, quote, insight, question)
 `;
 
-      // 逻辑：一半来源于 library，一半来源于大模型推荐
-      let generatedNotes: any[] = [];
-      
-      // 1. 从 library 中随机抽取
-      if (libraryBooks.length > 0) {
-        for (let i = 0; i < 4; i++) {
-          const randomBook = libraryBooks[Math.floor(Math.random() * libraryBooks.length)];
-          generatedNotes.push({
-            content: `这是从《${randomBook.title}》中摘录的片段。`, // 实际应从书中提取，此处简化
-            bookTitle: randomBook.title,
-            author: randomBook.author || '佚名',
-            chapter: '章节',
-            type: 'notebook'
-          });
-        }
-      }
-
-      // 2. 大模型生成剩余部分
-      const aiPrompt = prompt + `\n请补充 4 条关于其他真实书籍的笔记。`;
-      
       const res = await fetch(`${config.baseUrl.replace(/\/+$/, '')}/chat/completions`, {
         method: 'POST',
         headers: {
@@ -283,7 +296,7 @@ export default function DiscoveryFeed() {
         },
         body: JSON.stringify({
           model: config.model,
-          messages: [{ role: 'user', content: aiPrompt }],
+          messages: [{ role: 'user', content: prompt }],
           temperature: 0.7
         })
       });
@@ -324,47 +337,51 @@ export default function DiscoveryFeed() {
         const parsed = JSON.parse(cleanedContent);
         const aiGenerated = parsed.notes || (Array.isArray(parsed) ? parsed : [parsed]);
         const aiGeneratedArray = Array.isArray(aiGenerated) ? aiGenerated : [aiGenerated];
-        generatedNotes = [...generatedNotes, ...aiGeneratedArray];
+        
+        // 过滤并确保字数限制
+        const finalNotes = aiGeneratedArray.map((note: any) => ({
+          ...note,
+          content: note.content?.length > 120 ? note.content.substring(0, 117) + '...' : note.content
+        })).filter((note: any) => note.content?.length >= 25); // 稍微放宽一点限制以防 AI 缩减太狠
+
+        const fonts = ['font-serif', 'font-sans', 'font-mono', 'font-handwritten', 'font-brush'];
+        const bgColors = [
+          'bg-white', 'bg-blue-50/30', 'bg-[#fffcf5]', 'bg-gray-50', 'bg-notebook-lines', 
+          'bg-emerald-50/30', 'bg-orange-50/30', 'bg-rose-50', 'bg-amber-50', 'bg-violet-50', 
+          'bg-teal-50', 'bg-stone-100'
+        ];
+        const textColors = ['text-gray-800', 'text-slate-800', 'text-zinc-800', 'text-blue-900', 'text-stone-900', 'text-emerald-900'];
+        const borderColors = ['border-gray-100', 'border-blue-100/50', 'border-[#88d8c0]', 'border-transparent', 'border-rose-200', 'border-amber-200'];
+        const layouts: Card['styleConfig']['layoutType'][] = ['centered', 'left', 'bordered', 'minimal', 'notebook', 'card', 'poster', 'handwritten', 'left-border', 'blue-dot'];
+        const decorations: Card['styleConfig']['decoration'][] = ['none', 'sticker-star', 'sticker-heart', 'sticker-flower', 'line-top', 'line-bottom', 'quote-mark'];
+
+        const newCards: Card[] = finalNotes.map((note: any, index: number) => ({
+          id: `ai_${Date.now()}_${index}`,
+          bookId: `b_ai_${Date.now()}_${index}`,
+          type: note.type as any,
+          content: note.content,
+          bookTitle: note.bookTitle,
+          author: note.author,
+          chapter: note.chapter,
+          date: new Date().toLocaleDateString(),
+          user: 'AI Assistant',
+          styleConfig: {
+            fontFamily: fonts[Math.floor(Math.random() * fonts.length)],
+            backgroundColor: bgColors[Math.floor(Math.random() * bgColors.length)],
+            textColor: textColors[Math.floor(Math.random() * textColors.length)],
+            borderColor: borderColors[Math.floor(Math.random() * borderColors.length)],
+            layoutType: layouts[Math.floor(Math.random() * layouts.length)],
+            decoration: decorations[Math.floor(Math.random() * decorations.length)]
+          }
+        }));
+
+        const updatedAiNotes = [...newCards, ...aiNotes];
+        setAiNotes(updatedAiNotes);
+        localStorage.setItem('aiNotes', JSON.stringify(updatedAiNotes));
       } catch (e) {
         console.error("Failed to parse JSON:", e, "Cleaned content:", cleanedContent);
         throw new Error("返回的数据格式不正确，解析失败。请确保 AI 返回的是标准 JSON 格式。");
       }
-      
-      const fonts = ['font-serif', 'font-sans', 'font-mono', 'font-handwritten', 'font-brush'];
-      const bgColors = [
-        'bg-white', 'bg-blue-50/30', 'bg-[#fffcf5]', 'bg-gray-50', 'bg-notebook-lines', 
-        'bg-emerald-50/30', 'bg-orange-50/30', 'bg-rose-50', 'bg-amber-50', 'bg-violet-50', 
-        'bg-teal-50', 'bg-stone-100'
-      ];
-      const textColors = ['text-gray-800', 'text-slate-800', 'text-zinc-800', 'text-blue-900', 'text-stone-900', 'text-emerald-900'];
-      const borderColors = ['border-gray-100', 'border-blue-100/50', 'border-[#88d8c0]', 'border-transparent', 'border-rose-200', 'border-amber-200'];
-      const layouts: Card['styleConfig']['layoutType'][] = ['centered', 'left', 'bordered', 'minimal', 'notebook', 'card', 'poster', 'handwritten', 'left-border', 'blue-dot'];
-      const decorations: Card['styleConfig']['decoration'][] = ['none', 'sticker-star', 'sticker-heart', 'sticker-flower', 'line-top', 'line-bottom', 'quote-mark'];
-
-      const newCards: Card[] = generatedNotes.map((note: any, index: number) => ({
-        id: `ai_${Date.now()}_${index}`,
-        bookId: `b_ai_${Date.now()}_${index}`,
-        type: note.type as any,
-        content: note.content,
-        bookTitle: note.bookTitle,
-        author: note.author,
-        chapter: note.chapter,
-        date: new Date().toLocaleDateString(),
-        user: 'AI Assistant',
-        styleConfig: {
-          fontFamily: fonts[Math.floor(Math.random() * fonts.length)],
-          backgroundColor: bgColors[Math.floor(Math.random() * bgColors.length)],
-          textColor: textColors[Math.floor(Math.random() * textColors.length)],
-          borderColor: borderColors[Math.floor(Math.random() * borderColors.length)],
-          layoutType: layouts[Math.floor(Math.random() * layouts.length)],
-          decoration: decorations[Math.floor(Math.random() * decorations.length)]
-        }
-      }));
-
-      const updatedAiNotes = [...newCards, ...aiNotes];
-      setAiNotes(updatedAiNotes);
-      localStorage.setItem('aiNotes', JSON.stringify(updatedAiNotes));
-
     } catch (error: any) {
       console.error("Failed to generate notes:", error);
       alert(`生成笔记失败: ${error.message || "请稍后重试"}`);

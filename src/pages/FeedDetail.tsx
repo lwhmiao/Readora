@@ -221,20 +221,20 @@ export default function FeedDetail() {
     setIsGenerating(true);
     try {
       const prompt = `
-你是一个社交平台的评论生成器。
-当前笔记内容：
+请分析以下阅读笔记内容，并提供一些读者的感悟或讨论。
+笔记内容：
 "${card.content}"
 
 现有的评论：
 ${comments.slice(0, 5).map(c => `${c.userName}: ${c.content}`).join('\n')}
 
-请根据笔记内容，生成 5 到 10 条新的评论。
 要求：
-1. 评论内容必须直接引用或紧密围绕笔记原文进行讨论。
-2. 请只返回一个 JSON 数组，数组中的每个对象包含两个字段：
+1. 生成 5 到 10 条新的读者反馈。
+2. 反馈内容必须直接引用或紧密围绕笔记原文进行讨论。
+3. 请只返回一个 JSON 数组，数组中的每个对象包含两个字段：
    - userName: 随机生成一个中文昵称
-   - content: 评论的具体内容
-3. 不要返回任何其他格式或说明文字，只返回 JSON 数组。
+   - content: 反馈的具体内容
+4. 不要返回任何其他格式或说明文字，只返回 JSON 数组。
 `;
 
       const res = await fetch(`${config.baseUrl.replace(/\/+$/, '')}/chat/completions`, {
