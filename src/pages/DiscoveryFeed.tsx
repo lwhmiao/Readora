@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { RefreshCw, Book, User, Home, HelpCircle, Settings, Heart, Plus, X } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { Card } from '../types';
-import { GoogleGenAI, Type } from '@google/genai';
 
 export const mockCards: Card[] = [
   {
@@ -225,7 +224,21 @@ export default function DiscoveryFeed() {
     if (isRefreshing) return;
     setIsRefreshing(true);
     try {
-      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+      const savedConfigs = localStorage.getItem('apiConfigs');
+      if (!savedConfigs) {
+        alert('⚠️ 请先在 Profile 页面配置 API');
+        setIsRefreshing(false);
+        return;
+      }
+      
+      const configs = JSON.parse(savedConfigs);
+      const config = configs[0];
+      if (!config || !config.baseUrl || !config.apiKey || !config.model) {
+        alert('⚠️ API 配置不完整，请前往 Profile 页面配置');
+        setIsRefreshing(false);
+        return;
+      }
+
       const libraryBooks = JSON.parse(localStorage.getItem('libraryBooks') || '[]');
       const bookTitles = libraryBooks.map((b: any) => b.title).join(', ');
       
@@ -238,7 +251,7 @@ export default function DiscoveryFeed() {
 4. **极其重要：所有提及的书籍必须是现实中真实存在、正式出版过的书籍，绝对不可以凭空捏造书名或作者！**
 5. 每次发布的笔记，其来源书籍不能有重合（即这 5-8 条笔记必须来自不同的书）。
 6. 每条笔记的字数控制在 10 到 100 字之间。
-7. 返回的 JSON 格式必须是一个数组，每个元素包含以下字段：
+7. 返回的 JSON 格式必须是一个对象，包含一个 \`notes\` 数组，每个元素包含以下字段：
    - content: 笔记内容（可以使用简单的 HTML 标签如 <span class="text-orange-500 font-bold">, <br/> 增加排版。注意：笔记重点字的颜色（如 text-orange-500, text-blue-500, text-red-500, text-emerald-500, text-purple-500 等）必须随机，但要与背景适配，不能跟背景色类似，不然就看不清了）
    - bookTitle: 书名
    - author: 作者
@@ -246,29 +259,40 @@ export default function DiscoveryFeed() {
    - type: 笔记类型（从 'notebook', 'quote', 'insight', 'question' 中选择一个）
 `;
 
-      const response = await ai.models.generateContent({
-        model: "gemini-3-flash-preview",
-        contents: prompt,
-        config: {
-          responseMimeType: "application/json",
-          responseSchema: {
-            type: Type.ARRAY,
-            items: {
-              type: Type.OBJECT,
-              properties: {
-                content: { type: Type.STRING },
-                bookTitle: { type: Type.STRING },
-                author: { type: Type.STRING },
-                chapter: { type: Type.STRING },
-                type: { type: Type.STRING }
-              },
-              required: ["content", "bookTitle", "author", "chapter", "type"]
-            }
-          }
-        }
+      const res = await fetch(`${config.baseUrl.replace(/\/+$/, '')}/chat/completions`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${config.apiKey}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          model: config.model,
+          messages: [{ role: 'user', content: prompt }],
+          temperature: 0.7,
+          response_format: { type: "json_object" }
+        })
       });
 
-      const generatedNotes = JSON.parse(response.text || '[]');
+      if (!res.ok) {
+        let errorMsg = `API 请求失败 (${res.status})`;
+        try {
+          const errorData = await res.json();
+          errorMsg = errorData.error?.message || errorData.message || JSON.stringify(errorData) || errorMsg;
+        } catch (e) {}
+        throw new Error(errorMsg);
+      }
+      
+      const data = await res.json();
+      const replyContent = data.choices[0].message.content;
+      
+      let generatedNotes = [];
+      try {
+        const parsed = JSON.parse(replyContent);
+        generatedNotes = parsed.notes || parsed || [];
+      } catch (e) {
+        console.error("Failed to parse JSON:", e);
+        throw new Error("返回的数据格式不正确");
+      }
       
       const fonts = ['font-serif', 'font-sans', 'font-mono', 'font-handwritten', 'font-brush'];
       const bgColors = [
@@ -305,9 +329,9 @@ export default function DiscoveryFeed() {
       setAiNotes(updatedAiNotes);
       localStorage.setItem('aiNotes', JSON.stringify(updatedAiNotes));
 
-    } catch (error) {
+    } catch (error: any) {
       console.error("Failed to generate notes:", error);
-      alert("生成笔记失败，请稍后重试。");
+      alert(`生成笔记失败: ${error.message || "请稍后重试"}`);
     } finally {
       setIsRefreshing(false);
     }
