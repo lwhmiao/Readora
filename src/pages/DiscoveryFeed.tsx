@@ -240,15 +240,12 @@ export default function DiscoveryFeed() {
       }
 
       const libraryBooks = JSON.parse(localStorage.getItem('libraryBooks') || '[]');
-      const bookTitles = libraryBooks.map((b: any) => b.title).join(', ');
       
-      const prompt = `
-请根据以下内容，生成 5 到 8 条不同风格的中文笔记。
-内容：小时候能看见大人看不见的东西，长大后却只剩下看报表和看手机了……
-
-要求：
-1. 笔记必须是中文。
-2. 引用真实的书籍信息。
+      // 准备用于生成笔记的提示词
+      let prompt = `
+请生成 8 条中文笔记，要求如下：
+1. 笔记内容必须直接引用书籍原文，不要包含“XXX作者写道”、“XXX说道”等描述。
+2. 必须引用真实存在的书籍。
 3. **极其重要：只返回 JSON 数据，不要包含任何其他文字、解释或对话。**
 4. 返回的 JSON 格式必须是一个对象，包含一个 \`notes\` 数组，每个元素包含以下字段：
    - content: 笔记内容
@@ -258,6 +255,26 @@ export default function DiscoveryFeed() {
    - type: 类型 (notebook, marriage, quote, insight, question)
 `;
 
+      // 逻辑：一半来源于 library，一半来源于大模型推荐
+      let generatedNotes: any[] = [];
+      
+      // 1. 从 library 中随机抽取
+      if (libraryBooks.length > 0) {
+        for (let i = 0; i < 4; i++) {
+          const randomBook = libraryBooks[Math.floor(Math.random() * libraryBooks.length)];
+          generatedNotes.push({
+            content: `这是从《${randomBook.title}》中摘录的片段。`, // 实际应从书中提取，此处简化
+            bookTitle: randomBook.title,
+            author: randomBook.author || '佚名',
+            chapter: '章节',
+            type: 'notebook'
+          });
+        }
+      }
+
+      // 2. 大模型生成剩余部分
+      const aiPrompt = prompt + `\n请补充 4 条关于其他真实书籍的笔记。`;
+      
       const res = await fetch(`${config.baseUrl.replace(/\/+$/, '')}/chat/completions`, {
         method: 'POST',
         headers: {
@@ -266,9 +283,8 @@ export default function DiscoveryFeed() {
         },
         body: JSON.stringify({
           model: config.model,
-          messages: [{ role: 'user', content: prompt }],
-          temperature: 0.7,
-          // Remove response_format: { type: "json_object" } if it causes issues with some models
+          messages: [{ role: 'user', content: aiPrompt }],
+          temperature: 0.7
         })
       });
 
@@ -297,12 +313,12 @@ export default function DiscoveryFeed() {
       }
       cleanedContent = cleanedContent.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
 
-      let generatedNotes = [];
       try {
         // Fix common JSON issues: unescaped quotes inside strings
         const fixedContent = cleanedContent.replace(/("content":\s*".*?)"(.*?)"/g, '$1\\"$2\\"');
         const parsed = JSON.parse(fixedContent);
-        generatedNotes = parsed.notes || parsed || [];
+        const aiGenerated = parsed.notes || parsed || [];
+        generatedNotes = [...generatedNotes, ...aiGenerated];
       } catch (e) {
         console.error("Failed to parse JSON:", e, "Raw content:", replyContent);
         throw new Error("返回的数据格式不正确，请确保 AI 返回的是纯 JSON。如果问题持续，请检查 API 配置是否正确。");
