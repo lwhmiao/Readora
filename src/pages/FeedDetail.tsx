@@ -221,20 +221,16 @@ export default function FeedDetail() {
     setIsGenerating(true);
     try {
       const prompt = `
-请分析以下阅读笔记内容，并提供一些读者的感悟或讨论。
-笔记内容：
+请作为数据生成器，基于以下输入文本生成 5 到 10 条模拟社交媒体评论数据。
+输入文本：
 "${card.content}"
 
-现有的评论：
-${comments.slice(0, 5).map(c => `${c.userName}: ${c.content}`).join('\n')}
-
 要求：
-1. 生成 5 到 10 条新的读者反馈。
-2. 反馈内容必须直接引用或紧密围绕笔记原文进行讨论。
-3. 请只返回一个 JSON 数组，数组中的每个对象包含两个字段：
-   - userName: 随机生成一个中文昵称
-   - content: 反馈的具体内容
-4. 不要返回任何其他格式或说明文字，只返回 JSON 数组。
+1. 评论风格多样，语气自然。
+2. 必须以 JSON 数组格式返回，每个对象包含两个字段：
+   - userName: 随机生成的中文昵称
+   - content: 评论的具体内容
+3. 严禁返回任何 JSON 以外的文字、说明或 Markdown 标记。
 `;
 
       const res = await fetch(`${config.baseUrl.replace(/\/+$/, '')}/chat/completions`, {
@@ -254,31 +250,39 @@ ${comments.slice(0, 5).map(c => `${c.userName}: ${c.content}`).join('\n')}
       const data = await res.json();
       const content = data.choices[0].message.content;
       
-      // 改进解析机制：尝试寻找第一个 '[' 和最后一个 ']' 之间的内容
-      let cleanedContent = content;
-      const firstBracket = content.indexOf('[');
-      const lastBracket = content.lastIndexOf(']');
+      // 改进解析机制
+      let cleanedContent = content.trim();
+      
+      // 1. 移除 Markdown 标记
+      cleanedContent = cleanedContent.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
+      
+      // 2. 尝试寻找第一个 '[' 和最后一个 ']' 之间的内容
+      const firstBracket = cleanedContent.indexOf('[');
+      const lastBracket = cleanedContent.lastIndexOf(']');
       
       if (firstBracket !== -1 && lastBracket !== -1 && lastBracket > firstBracket) {
-        cleanedContent = content.substring(firstBracket, lastBracket + 1);
+        cleanedContent = cleanedContent.substring(firstBracket, lastBracket + 1);
       } else {
         // 如果找不到方括号，尝试寻找第一个 '{' 和最后一个 '}'
-        const firstBrace = content.indexOf('{');
-        const lastBrace = content.lastIndexOf('}');
+        const firstBrace = cleanedContent.indexOf('{');
+        const lastBrace = cleanedContent.lastIndexOf('}');
         if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
-          cleanedContent = content.substring(firstBrace, lastBrace + 1);
+          cleanedContent = cleanedContent.substring(firstBrace, lastBrace + 1);
           // 如果是单个对象，包装成数组
-          cleanedContent = `[${cleanedContent}]`;
+          if (!cleanedContent.trim().startsWith('[')) {
+            cleanedContent = `[${cleanedContent}]`;
+          }
         }
       }
       
-      cleanedContent = cleanedContent.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
+      // 3. 移除 JSON 中常见的末尾逗号
+      cleanedContent = cleanedContent.replace(/,\s*([\]}])/g, '$1');
       
       let parsed;
       try {
         parsed = JSON.parse(cleanedContent);
       } catch (e) {
-        console.error('Failed to parse JSON', content);
+        console.error('Failed to parse JSON:', e, 'Cleaned content:', cleanedContent);
         throw new Error('大模型返回格式错误，无法解析为 JSON 数组');
       }
 
