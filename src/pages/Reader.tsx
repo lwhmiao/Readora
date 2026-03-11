@@ -156,30 +156,32 @@ export default function Reader() {
   const loadTxt = async () => {
     if (!id) return;
     try {
-      let content = book?.content || '';
-      
-      try {
-        const file = await get(`book_file_${id}`);
-        if (file && file instanceof Blob) {
-          // Use FileReader for better compatibility with older mobile browsers
-          const reader = new FileReader();
-          content = await new Promise<string>((resolve, reject) => {
-            reader.onload = () => resolve(reader.result as string);
-            reader.onerror = reject;
-            reader.readAsText(file);
-          });
+      const file = await get(`book_file_${id}`);
+      if (file && file instanceof Blob) {
+        const reader = new FileReader();
+        const buffer = await new Promise<ArrayBuffer>((resolve, reject) => {
+          reader.onload = () => resolve(reader.result as ArrayBuffer);
+          reader.onerror = reject;
+          reader.readAsArrayBuffer(file);
+        });
+
+        const uint8 = new Uint8Array(buffer);
+        
+        // Encoding detection: Try UTF-8 first, fallback to GBK for Chinese TXT files
+        let content = '';
+        try {
+          const utf8Decoder = new TextDecoder('utf-8', { fatal: true });
+          content = utf8Decoder.decode(uint8);
+        } catch (e) {
+          // If UTF-8 fails, try GBK (common for Chinese TXT)
+          const gbkDecoder = new TextDecoder('gbk');
+          content = gbkDecoder.decode(uint8);
         }
-      } catch (err) {
-        console.error('Error loading TXT from IDB:', err);
+        
+        setTxtContent(content || "No content available.");
       }
-
-      if (!content) {
-        content = "No content available.";
-      }
-
-      setTxtContent(content);
     } catch (err) {
-      console.error('Error processing TXT:', err);
+      console.error('Error loading TXT:', err);
     }
   };
 
@@ -255,7 +257,6 @@ export default function Reader() {
     try {
       const file = await get(`book_file_${id}`);
       if (file && file instanceof Blob) {
-        // Use FileReader for better compatibility with older mobile browsers
         const reader = new FileReader();
         const arrayBuffer = await new Promise<ArrayBuffer>((resolve, reject) => {
           reader.onload = () => resolve(reader.result as ArrayBuffer);
@@ -263,7 +264,12 @@ export default function Reader() {
           reader.readAsArrayBuffer(file);
         });
         
-        const loadingTask = pdfjsLib.getDocument({ data: new Uint8Array(arrayBuffer) });
+        // Add cMapUrl for better CJK character support in PDFs
+        const loadingTask = pdfjsLib.getDocument({ 
+          data: new Uint8Array(arrayBuffer),
+          cMapUrl: `https://unpkg.com/pdfjs-dist@${pdfjsLib.version}/cmaps/`,
+          cMapPacked: true,
+        });
         const pdf = await loadingTask.promise;
         setPdfDoc(pdf);
         setTotalPages(pdf.numPages);
@@ -340,8 +346,9 @@ export default function Reader() {
 
       const containerWidth = canvas.parentElement?.clientWidth || window.innerWidth;
       const unscaledViewport = page.getViewport({ scale: 1 });
-      const scale = (containerWidth - 48) / unscaledViewport.width; // 48 is padding
-      const viewport = page.getViewport({ scale: scale * 1.5 }); // Higher resolution
+      // Limit scale to avoid memory issues on mobile
+      const scale = Math.min(2, (containerWidth - 48) / unscaledViewport.width); 
+      const viewport = page.getViewport({ scale: scale * (window.devicePixelRatio || 1) }); 
 
       canvas.height = viewport.height;
       canvas.width = viewport.width;
