@@ -4,11 +4,13 @@ import { ArrowLeft, Settings, List, Bot, ChevronUp, ChevronDown } from 'lucide-r
 import { Book as BookType } from '../types';
 import { get } from 'idb-keyval';
 import * as pdfjsLib from 'pdfjs-dist';
+// @ts-ignore
+import pdfWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import { EpubView } from 'react-reader';
 import { mockBooks } from './Library';
 
 // Set up PDF.js worker
-pdfjsLib.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.mjs`;
+pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorker;
 
 const THEMES = [
   { id: 'light', bg: '#ffffff', text: '#37352F', name: '默认白' },
@@ -16,6 +18,8 @@ const THEMES = [
   { id: 'green', bg: '#E8F3E8', text: '#2D4A22', name: '护眼绿' },
   { id: 'dark', bg: '#1A1A1A', text: '#CECECE', name: '夜间' },
 ];
+
+const EpubViewAny = EpubView as any;
 
 export default function Reader() {
   const { id } = useParams();
@@ -257,14 +261,11 @@ export default function Reader() {
     try {
       const file = await get(`book_file_${id}`);
       if (file && file instanceof Blob) {
-        // Use Blob URL instead of ArrayBuffer for better memory management on mobile
-        const blobUrl = URL.createObjectURL(file);
-        
-        // Ensure worker is set
-        pdfjsLib.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.mjs`;
+        // Use ArrayBuffer instead of Blob URL for better stability on some mobile browsers
+        const arrayBuffer = await file.arrayBuffer();
 
         const loadingTask = pdfjsLib.getDocument({ 
-          url: blobUrl,
+          data: new Uint8Array(arrayBuffer),
           cMapUrl: `https://unpkg.com/pdfjs-dist@${pdfjsLib.version}/cmaps/`,
           cMapPacked: true,
           standardFontDataUrl: `https://unpkg.com/pdfjs-dist@${pdfjsLib.version}/standard_fonts/`,
@@ -351,13 +352,14 @@ export default function Reader() {
       // More reliable width detection for mobile
       const container = canvas.closest('main');
       const availableWidth = container?.clientWidth || window.innerWidth;
-      const targetWidth = Math.min(availableWidth - 48, 400); // 48 is padding, cap at 400 for max-w-md
+      const targetWidth = Math.min(availableWidth - 32, window.innerWidth); // 32 is padding
       
       const unscaledViewport = page.getViewport({ scale: 1 });
       const scale = targetWidth / unscaledViewport.width;
 
-      // Balanced resolution for mobile (DPR capped at 1.5 to save memory)
-      const outputScale = Math.min(window.devicePixelRatio || 1, 1.5);
+      // Force outputScale to 1 on mobile to prevent memory crash from allocating too large a canvas
+      const isMobile = window.innerWidth < 768;
+      const outputScale = isMobile ? 1 : Math.min(window.devicePixelRatio || 1, 1.5);
       const viewport = page.getViewport({ scale: scale * outputScale }); 
 
       canvas.width = viewport.width;
@@ -609,7 +611,7 @@ export default function Reader() {
         ) : book?.format === 'EPUB' ? (
           <div className="h-full w-full relative" style={{ height: '100%' }} onClick={(e) => e.stopPropagation()}>
             {epubData && (
-              <EpubView
+              <EpubViewAny
                 ref={epubViewRef}
                 url={epubData}
                 location={epubLocation}
@@ -639,7 +641,7 @@ export default function Reader() {
                 }}
                 epubOptions={{
                   flow: 'paginated',
-                  manager: 'continuous'
+                  manager: 'default'
                 }}
                 getRendition={(rendition) => {
                   const book = rendition.book;
@@ -672,8 +674,21 @@ export default function Reader() {
                       const touchEndX = e.changedTouches[0].screenX;
                       const touchEndY = e.changedTouches[0].screenY;
                       
-                      // If moved more than 10px, it's a swipe, not a tap
-                      if (Math.abs(touchEndX - touchStartX) > 10 || Math.abs(touchEndY - touchStartY) > 10) {
+                      const diffX = touchEndX - touchStartX;
+                      const diffY = touchEndY - touchStartY;
+
+                      if (Math.abs(diffX) > 50 && Math.abs(diffX) > Math.abs(diffY)) {
+                        // Horizontal swipe
+                        if (diffX > 0) {
+                          rendition.prev();
+                        } else {
+                          rendition.next();
+                        }
+                        return;
+                      }
+
+                      // If moved more than 10px but not a clear horizontal swipe, ignore
+                      if (Math.abs(diffX) > 10 || Math.abs(diffY) > 10) {
                         return;
                       }
                       
